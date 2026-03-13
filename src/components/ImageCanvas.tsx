@@ -100,11 +100,14 @@ export function ImageCanvas() {
 
   const imgStyle: React.CSSProperties = fit
     ? {
-        width: fit.w,
-        height: fit.h,
+        position: "absolute" as const,
+        left: "50%",
+        top: "50%",
+        width: fit.w * zoom,
+        height: fit.h * zoom,
         transform: [
+          "translate(-50%, -50%)",
           `translate(${panX}px, ${panY}px)`,
-          `scale(${zoom})`,
           rotation ? `rotate(${rotation}deg)` : "",
           flipH ? "scaleX(-1)" : "",
           flipV ? "scaleY(-1)" : "",
@@ -114,38 +117,39 @@ export function ImageCanvas() {
         transformOrigin: "center center",
         cursor: isDragging ? "grabbing" : zoom > 1 ? "grab" : "default",
         userSelect: "none" as const,
-        transition: isDragging ? "none" : "transform 0.05s ease-out",
       }
     : {};
 
   return (
     <div
       ref={containerRef}
-      className="flex-1 flex items-center justify-center overflow-hidden relative"
+      className="flex-1 relative overflow-hidden"
       style={bgStyle}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
       {!hasImage && (
-        <div className="text-center text-gray-400 select-none">
-          <svg
-            className="w-24 h-24 mx-auto mb-4 opacity-30"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-            />
-          </svg>
-          <p className="text-lg">拖放图片或文件夹到此处打开</p>
-          <p className="text-sm mt-2 opacity-60">
-            支持 JPG, PNG, GIF, BMP, WebP, TIFF, SVG, AVIF, PSD, CLIP 等格式
-          </p>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-center text-gray-400 select-none">
+            <svg
+              className="w-24 h-24 mx-auto mb-4 opacity-30"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
+            </svg>
+            <p className="text-lg">拖放图片或文件夹到此处打开</p>
+            <p className="text-sm mt-2 opacity-60">
+              支持 JPG, PNG, GIF, BMP, WebP, TIFF, SVG, AVIF, PSD, CLIP, PDF 等格式
+            </p>
+          </div>
         </div>
       )}
 
@@ -168,7 +172,7 @@ export function ImageCanvas() {
       )}
 
       {images.length > 0 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white/80 px-3 py-1 rounded-full text-sm select-none backdrop-blur-sm">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white/80 px-3 py-1 rounded-full text-sm select-none backdrop-blur-sm z-20">
           {currentIndex + 1} / {images.length}
           {zoom !== 1 && ` · ${Math.round(zoom * 100)}%`}
         </div>

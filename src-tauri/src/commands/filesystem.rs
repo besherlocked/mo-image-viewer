@@ -93,7 +93,6 @@ pub fn get_image_base64(path: String) -> Result<String, String> {
         .map(|e| e.to_lowercase())
         .unwrap_or_default();
 
-    // Formats the browser can render directly
     let browser_native = matches!(
         ext.as_str(),
         "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "svg" | "avif" | "ico"
@@ -110,7 +109,11 @@ pub fn get_image_base64(path: String) -> Result<String, String> {
         return load_clip_preview(file_path);
     }
 
-    // For PSD, TIFF, and other formats: decode via image crate, re-encode as PNG
+    if ext == "pdf" {
+        return render_pdf_preview(file_path);
+    }
+
+    // For TIFF and other formats: decode via image crate, re-encode as PNG
     let img = ImageReader::open(file_path)
         .map_err(|e| format!("Cannot open {}: {}", path, e))?
         .with_guessed_format()
@@ -136,6 +139,8 @@ fn load_clip_preview(path: &Path) -> Result<String, String> {
     let queries = [
         "SELECT ImageData FROM CanvasPreview LIMIT 1",
         "SELECT ImageData FROM Thumbnail LIMIT 1",
+        "SELECT Data FROM CanvasPreview LIMIT 1",
+        "SELECT Data FROM Thumbnail LIMIT 1",
     ];
 
     for query in &queries {
@@ -148,6 +153,106 @@ fn load_clip_preview(path: &Path) -> Result<String, String> {
     }
 
     Err("No preview image found in .clip file".to_string())
+}
+
+fn render_pdf_preview(pdf_path: &Path) -> Result<String, String> {
+    render_pdf_via_system(pdf_path)
+}
+
+#[cfg(target_os = "macos")]
+fn render_pdf_via_system(pdf_path: &Path) -> Result<String, String> {
+    let temp_dir = std::env::temp_dir().join("mo_image_viewer");
+    let _ = fs::create_dir_all(&temp_dir);
+
+    let output = std::process::Command::new("qlmanage")
+        .args(["-t", "-s", "4096", "-o"])
+        .arg(&temp_dir)
+        .arg(pdf_path)
+        .output()
+        .map_err(|e| format!("Cannot run qlmanage: {}", e))?;
+
+    if !output.status.success() {
+        return Err("qlmanage failed to generate PDF preview".to_string());
+    }
+
+    let fname = pdf_path
+        .file_name()
+        .ok_or("Invalid filename")?
+        .to_string_lossy();
+    let preview_path = temp_dir.join(format!("{}.png", fname));
+
+    if !preview_path.exists() {
+        return Err("PDF preview file not generated".to_string());
+    }
+
+    let data =
+        fs::read(&preview_path).map_err(|e| format!("Cannot read PDF preview: {}", e))?;
+    let _ = fs::remove_file(&preview_path);
+
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+    Ok(format!("data:image/png;base64,{}", b64))
+}
+
+#[cfg(target_os = "windows")]
+fn render_pdf_via_system(pdf_path: &Path) -> Result<String, String> {
+    let temp_dir = std::env::temp_dir().join("mo_image_viewer");
+    let _ = fs::create_dir_all(&temp_dir);
+
+    let preview_path = temp_dir.join("pdf_preview.png");
+    let pdf_str = pdf_path.to_string_lossy().replace('\'', "''");
+    let out_str = preview_path.to_string_lossy().replace('\'', "''");
+
+    let ps_script = format!(
+        r#"
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Data.Pdf.PdfDocument, Windows.Data.Pdf, ContentType = WindowsRuntime]
+$null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
+
+function Await($WinRtTask, $ResultType) {{
+    $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {{ $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' }})[0]
+    $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+    $netTask = $asTask.Invoke($null, @($WinRtTask))
+    $netTask.Wait(-1) | Out-Null
+    $netTask.Result
+}}
+
+$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync('{pdf_str}')) ([Windows.Storage.StorageFile])
+$doc = Await ([Windows.Data.Pdf.PdfDocument]::LoadFromFileAsync($file)) ([Windows.Data.Pdf.PdfDocument])
+$page = $doc.GetPage(0)
+$stream = New-Object Windows.Storage.Streams.InMemoryRandomAccessStream
+$null = $page.RenderToStreamAsync($stream).AsTask()
+$stream.Seek(0)
+$reader = New-Object System.IO.BinaryReader($stream.AsStreamForRead())
+$bytes = $reader.ReadBytes($stream.Size)
+[System.IO.File]::WriteAllBytes('{out_str}', $bytes)
+"#
+    );
+
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+        .output()
+        .map_err(|e| format!("Cannot run PowerShell: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("PDF rendering failed: {}", stderr));
+    }
+
+    if !preview_path.exists() {
+        return Err("PDF preview file not generated".to_string());
+    }
+
+    let data =
+        fs::read(&preview_path).map_err(|e| format!("Cannot read PDF preview: {}", e))?;
+    let _ = fs::remove_file(&preview_path);
+
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+    Ok(format!("data:image/png;base64,{}", b64))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn render_pdf_via_system(_pdf_path: &Path) -> Result<String, String> {
+    Err("PDF preview is not supported on this platform".to_string())
 }
 
 fn mime_from_extension(path: &Path) -> &'static str {
