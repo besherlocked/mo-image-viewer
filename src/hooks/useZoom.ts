@@ -44,6 +44,34 @@ export function useZoom(containerRef: React.RefObject<HTMLDivElement | null>) {
       const newPanX = panX + vx * (1 - scale);
       const newPanY = panY + vy * (1 - scale);
 
+      // #region agent log
+      fetch("http://127.0.0.1:7827/ingest/9eb93097-4180-4e4c-ad21-c27d2da357bc", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "0d0383",
+        },
+        body: JSON.stringify({
+          sessionId: "0d0383",
+          runId: "pre-fix-zoom",
+          hypothesisId: "H_zoom_state",
+          location: "src/hooks/useZoom.ts:wheel",
+          message: "wheel zoom update",
+          data: {
+            ctrlKey: e.ctrlKey,
+            deltaY: e.deltaY,
+            prevZoom: zoom,
+            newZoom,
+            prevPanX: panX,
+            prevPanY: panY,
+            newPanX,
+            newPanY,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion agent log
+
       setZoom(newZoom);
       setPan(newPanX, newPanY);
     };

@@ -119,6 +119,35 @@ export function ImageCanvas() {
       }
     : {};
 
+  useEffect(() => {
+    if (!fit || !hasImage) return;
+    // #region agent log
+    fetch("http://127.0.0.1:7827/ingest/9eb93097-4180-4e4c-ad21-c27d2da357bc", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "0d0383",
+      },
+      body: JSON.stringify({
+        sessionId: "0d0383",
+        runId: "pre-fix-zoom",
+        hypothesisId: "H_layout",
+        location: "src/components/ImageCanvas.tsx:layout",
+        message: "image layout after zoom",
+        data: {
+          zoom,
+          panX,
+          panY,
+          fitWidth: fit.w,
+          fitHeight: fit.h,
+          hasImage,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion agent log
+  }, [zoom, panX, panY, fit, hasImage]);
+
   return (
     <div
       ref={containerRef}
