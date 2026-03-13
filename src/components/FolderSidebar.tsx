@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useAppStore } from "../store/appStore";
+import type { FolderInfo, FolderLevel } from "../types";
 import { ThumbnailGrid } from "./ThumbnailGrid";
 
 export function FolderSidebar() {
@@ -100,7 +101,7 @@ export function FolderSidebar() {
         </div>
         <div className="overflow-y-auto h-[calc(100%-44px)] space-y-2">
           {multiLevelFolders && multiLevelFolders.length > 0
-            ? multiLevelFolders.map((level) => (
+            ? multiLevelFolders.map((level: FolderLevel) => (
                 <div
                   key={level.parent_path}
                   className="px-2 pb-2 border-b border-white/5 last:border-b-0"
@@ -108,7 +109,7 @@ export function FolderSidebar() {
                   <div className="text-xs text-white/60 mb-1 truncate">
                     {level.parent_name}
                   </div>
-                  {level.folders.map((folder) => {
+                  {level.folders.map((folder: FolderInfo) => {
                     const isCurrent = folder.path === currentFolder;
                     return (
                       <div

@@ -16,6 +16,12 @@ export interface ThumbnailData {
   data: string;
 }
 
+export interface FolderLevel {
+  parent_path: string;
+  parent_name: string;
+  folders: FolderInfo[];
+}
+
 export interface KeyBindings {
   prev_image: string;
   next_image: string;
