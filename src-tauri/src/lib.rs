@@ -1,6 +1,8 @@
 mod commands;
 mod models;
 
+use tauri::{Emitter, Manager};
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -19,15 +21,39 @@ pub fn run() {
             commands::window::set_fullscreen,
             commands::window::set_window_title,
         ])
-        .setup(|_app| {
+        .setup(|app| {
             #[cfg(debug_assertions)]
             {
-                use tauri::Manager;
-                let window = _app.get_webview_window("main").unwrap();
+                let window = app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
+
+            let args: Vec<String> = std::env::args().collect();
+            if args.len() > 1 {
+                let file_path = args[1].clone();
+                let path = std::path::Path::new(&file_path);
+                if path.exists() && path.is_file() {
+                    let handle = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        let _ = handle.emit("open-file", file_path);
+                    });
+                }
+            }
+
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Opened { urls } = event {
+                for url in urls {
+                    if let Ok(path) = url.to_file_path() {
+                        if let Some(path_str) = path.to_str() {
+                            let _ = app.emit("open-file", path_str.to_string());
+                        }
+                    }
+                }
+            }
+        });
 }

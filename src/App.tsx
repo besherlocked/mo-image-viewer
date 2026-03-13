@@ -27,20 +27,34 @@ function App() {
     [setShowContextMenu]
   );
 
+  // Handle file association / CLI open
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    const setup = async () => {
+      unlisten = await listen<string>("open-file", async (event) => {
+        const filePath = event.payload;
+        if (filePath && typeof filePath === "string") {
+          await openFile(filePath);
+        }
+      });
+    };
+    setup();
+    return () => { if (unlisten) unlisten(); };
+  }, [openFile]);
 
-    const setupDragDrop = async () => {
+  // Handle drag-drop
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const setup = async () => {
       try {
         unlisten = await listen<{ paths: string[] }>(
           "tauri://drag-drop",
           async (event) => {
             const paths = event.payload.paths;
             if (!paths || paths.length === 0) return;
-
             const firstPath = paths[0];
-            const isDir = !firstPath.includes(".");
-            if (isDir) {
+            const hasExt = firstPath.lastIndexOf(".") > firstPath.lastIndexOf("/");
+            if (!hasExt) {
               await openFolder(firstPath);
             } else if (isImageFile(firstPath)) {
               await openFile(firstPath);
@@ -51,33 +65,9 @@ function App() {
         console.error("Failed to setup drag-drop listener:", e);
       }
     };
-
-    setupDragDrop();
-
-    return () => {
-      if (unlisten) unlisten();
-    };
+    setup();
+    return () => { if (unlisten) unlisten(); };
   }, [openFile, openFolder]);
-
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    const setupFileOpen = async () => {
-      try {
-        unlisten = await listen<string[]>("tauri://file-drop", async (event) => {
-          const paths = event.payload;
-          if (paths && paths.length > 0) {
-            await openFile(paths[0]);
-          }
-        });
-      } catch {
-        // Event may not be available
-      }
-    };
-    setupFileOpen();
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, [openFile]);
 
   return (
     <div

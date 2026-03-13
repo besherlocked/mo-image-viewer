@@ -1,7 +1,9 @@
 use crate::models::{is_image_file, FolderInfo, ImageInfo};
 use base64::Engine as _;
+use image::ImageReader;
 use natord::compare as natural_compare;
 use std::fs;
+use std::io::Cursor;
 use std::path::Path;
 
 #[tauri::command]
@@ -85,11 +87,39 @@ pub fn get_image_base64(path: String) -> Result<String, String> {
         return Err(format!("File not found: {}", path));
     }
 
-    let data = fs::read(file_path).map_err(|e| e.to_string())?;
-    let mime = mime_from_extension(file_path);
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
 
-    Ok(format!("data:{};base64,{}", mime, b64))
+    // Formats the browser can render directly
+    let browser_native = matches!(
+        ext.as_str(),
+        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "svg" | "avif" | "ico"
+    );
+
+    if browser_native {
+        let data = fs::read(file_path).map_err(|e| e.to_string())?;
+        let mime = mime_from_extension(file_path);
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+        return Ok(format!("data:{};base64,{}", mime, b64));
+    }
+
+    // For PSD, TIFF, and other formats: decode via image crate, re-encode as PNG
+    let img = ImageReader::open(file_path)
+        .map_err(|e| format!("Cannot open {}: {}", path, e))?
+        .with_guessed_format()
+        .map_err(|e| format!("Cannot detect format: {}", e))?
+        .decode()
+        .map_err(|e| format!("Cannot decode {}: {}", path, e))?;
+
+    let mut buf = Vec::new();
+    img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png)
+        .map_err(|e| format!("Cannot encode as PNG: {}", e))?;
+
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
+    Ok(format!("data:image/png;base64,{}", b64))
 }
 
 fn mime_from_extension(path: &Path) -> &'static str {
@@ -109,6 +139,8 @@ fn mime_from_extension(path: &Path) -> &'static str {
         Some("avif") => "image/avif",
         Some("ico") => "image/x-icon",
         Some("heic" | "heif") => "image/heic",
+        Some("psd") => "image/vnd.adobe.photoshop",
+        Some("pdf") => "application/pdf",
         _ => "application/octet-stream",
     }
 }

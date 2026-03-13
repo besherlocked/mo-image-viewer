@@ -88,6 +88,16 @@
         "ext": ["ico"],
         "mimeType": "image/x-icon",
         "description": "ICO Image"
+      },
+      {
+        "ext": ["psd"],
+        "mimeType": "image/vnd.adobe.photoshop",
+        "description": "PSD Image"
+      },
+      {
+        "ext": ["pdf"],
+        "mimeType": "application/pdf",
+        "description": "PDF Document"
       }
     ]
   }

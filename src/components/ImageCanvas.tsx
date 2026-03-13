@@ -7,7 +7,7 @@ export function ImageCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const dragStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
 
   const {
@@ -28,80 +28,51 @@ export function ImageCanvas() {
 
   useZoom(containerRef);
 
-  const getTransform = useCallback(() => {
-    const transforms: string[] = [];
-    transforms.push(`translate(${panX}px, ${panY}px)`);
-    transforms.push(`scale(${zoom})`);
-    if (rotation !== 0) transforms.push(`rotate(${rotation}deg)`);
-    if (flipH) transforms.push("scaleX(-1)");
-    if (flipV) transforms.push("scaleY(-1)");
-    return transforms.join(" ");
-  }, [panX, panY, zoom, rotation, flipH, flipV]);
-
-  const getImageStyle = useCallback((): React.CSSProperties => {
-    if (!containerRef.current || naturalSize.w === 0) {
-      return {};
-    }
-
-    const container = containerRef.current;
-    const cw = container.clientWidth;
-    const ch = container.clientHeight;
+  const computeFitSize = useCallback(() => {
+    if (!containerRef.current || naturalSize.w === 0) return null;
+    const cw = containerRef.current.clientWidth;
+    const ch = containerRef.current.clientHeight;
     const iw = naturalSize.w;
     const ih = naturalSize.h;
-
-    let width: number | string = "auto";
-    let height: number | string = "auto";
 
     switch (fitMode) {
       case "contain": {
         const ratio = Math.min(cw / iw, ch / ih, 1);
-        width = iw * ratio;
-        height = ih * ratio;
-        break;
+        return { w: iw * ratio, h: ih * ratio };
       }
-      case "width": {
-        width = cw;
-        height = (cw / iw) * ih;
-        break;
-      }
-      case "height": {
-        height = ch;
-        width = (ch / ih) * iw;
-        break;
-      }
-      case "original": {
-        width = iw;
-        height = ih;
-        break;
-      }
+      case "width":
+        return { w: cw, h: (cw / iw) * ih };
+      case "height":
+        return { w: (ch / ih) * iw, h: ch };
+      case "original":
+        return { w: iw, h: ih };
+      default:
+        return { w: iw, h: ih };
     }
-
-    return {
-      width,
-      height,
-      transform: getTransform(),
-      transformOrigin: "center center",
-      cursor: isDragging ? "grabbing" : zoom > 1 ? "grab" : "default",
-      userSelect: "none",
-      transition: isDragging ? "none" : "transform 0.05s ease-out",
-    };
-  }, [fitMode, naturalSize, getTransform, isDragging, zoom]);
+  }, [fitMode, naturalSize]);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      if (e.button !== 0 || zoom <= 1) return;
+      if (e.button !== 0) return;
       setIsDragging(true);
-      setDragStart({ x: e.clientX - panX, y: e.clientY - panY });
+      dragStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        panX,
+        panY,
+      };
     },
-    [zoom, panX, panY]
+    [panX, panY]
   );
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (!isDragging) return;
-      setPan(e.clientX - dragStart.x, e.clientY - dragStart.y);
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      setPan(dragStartRef.current.panX + dx, dragStartRef.current.panY + dy);
     },
-    [isDragging, dragStart, setPan]
+    [isDragging, setPan]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -118,20 +89,45 @@ export function ImageCanvas() {
   }, []);
 
   useEffect(() => {
-    const handleGlobalMouseUp = () => setIsDragging(false);
-    window.addEventListener("mouseup", handleGlobalMouseUp);
-    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+    const up = () => setIsDragging(false);
+    window.addEventListener("mouseup", up);
+    return () => window.removeEventListener("mouseup", up);
   }, []);
 
   const bgStyle = BACKGROUND_STYLES[background] || BACKGROUND_STYLES.dark;
+  const hasImage = currentImageData && images.length > 0;
+  const fit = computeFitSize();
 
-  if (!currentImageData && images.length === 0) {
-    return (
-      <div
-        ref={containerRef}
-        className="flex-1 flex items-center justify-center"
-        style={bgStyle}
-      >
+  const imgStyle: React.CSSProperties = fit
+    ? {
+        width: fit.w,
+        height: fit.h,
+        transform: [
+          `translate(${panX}px, ${panY}px)`,
+          `scale(${zoom})`,
+          rotation ? `rotate(${rotation}deg)` : "",
+          flipH ? "scaleX(-1)" : "",
+          flipV ? "scaleY(-1)" : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+        transformOrigin: "center center",
+        cursor: isDragging ? "grabbing" : zoom > 1 ? "grab" : "default",
+        userSelect: "none" as const,
+        transition: isDragging ? "none" : "transform 0.05s ease-out",
+      }
+    : {};
+
+  return (
+    <div
+      ref={containerRef}
+      className="flex-1 flex items-center justify-center overflow-hidden relative"
+      style={bgStyle}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+    >
+      {!hasImage && (
         <div className="text-center text-gray-400 select-none">
           <svg
             className="w-24 h-24 mx-auto mb-4 opacity-30"
@@ -148,34 +144,23 @@ export function ImageCanvas() {
           </svg>
           <p className="text-lg">拖放图片或文件夹到此处打开</p>
           <p className="text-sm mt-2 opacity-60">
-            支持 JPG, PNG, GIF, BMP, WebP, TIFF, SVG, AVIF 等格式
+            支持 JPG, PNG, GIF, BMP, WebP, TIFF, SVG, AVIF, PSD 等格式
           </p>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  return (
-    <div
-      ref={containerRef}
-      className="flex-1 flex items-center justify-center overflow-hidden relative"
-      style={bgStyle}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-    >
-      {loading && (
+      {loading && hasImage && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <div className="w-8 h-8 border-2 border-white/30 border-t-white/80 rounded-full animate-spin" />
         </div>
       )}
 
-      {currentImageData && (
+      {hasImage && (
         <img
           ref={imgRef}
           src={currentImageData}
           alt={images[currentIndex]?.name ?? ""}
-          style={getImageStyle()}
+          style={imgStyle}
           onLoad={handleImageLoad}
           draggable={false}
           className="max-w-none"
