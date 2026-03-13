@@ -21,14 +21,22 @@ export function useZoom(containerRef: React.RefObject<HTMLDivElement | null>) {
       const zoom = zoomRef.current;
       const { setZoom } = useAppStore.getState();
 
-      let delta: number;
+      const MIN_ZOOM = 0.1;
+      const MAX_ZOOM = 4;
+
+      let newZoom = zoom;
       if (e.ctrlKey) {
-        delta = -e.deltaY * 0.01;
+        // Trackpad pinch: use smooth exponential scaling
+        const factor = Math.exp(-e.deltaY * 0.001);
+        newZoom = zoom * factor;
       } else {
-        delta = -Math.sign(e.deltaY) * 0.1;
+        // Mouse wheel: fixed step, smaller step when缩小，稍大步长放大
+        const step = zoom < 1 ? 0.1 : 0.2;
+        const direction = -Math.sign(e.deltaY) || 1;
+        newZoom = zoom + direction * step;
       }
 
-      const newZoom = Math.max(0.1, Math.min(20, zoom * (1 + delta)));
+      newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
       if (Math.abs(newZoom - zoom) < 0.001) return;
 
       zoomRef.current = newZoom;

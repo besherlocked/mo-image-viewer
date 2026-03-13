@@ -275,9 +275,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  setZoom: (zoom: number) => set({ zoom: Math.max(0.1, Math.min(20, zoom)) }),
+  setZoom: (zoom: number) =>
+    set({ zoom: Math.max(0.1, Math.min(4, zoom)) }),
   zoomBy: (factor: number) =>
-    set((s) => ({ zoom: Math.max(0.1, Math.min(20, s.zoom * factor)) })),
+    set((s) => ({ zoom: Math.max(0.1, Math.min(4, s.zoom * factor)) })),
   resetView: () =>
     set({ zoom: 1, rotation: 0, flipH: false, flipV: false, panX: 0, panY: 0 }),
   setRotation: (rotation: number) => set({ rotation }),
