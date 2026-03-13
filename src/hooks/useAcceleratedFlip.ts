@@ -1,6 +1,6 @@
 import { useRef, useCallback } from "react";
 
-const FLIP_INTERVAL = 200; // 200ms = 5 images per second
+const FLIP_INTERVAL = 100; // 100ms = 10 images per second
 
 export function useAcceleratedFlip(onFlip: () => void) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);

@@ -49,10 +49,12 @@ function App() {
         unlisten = await listen<{ paths: string[] }>(
           "tauri://drag-drop",
           async (event) => {
-            const paths = event.payload.paths;
-            if (!paths || paths.length === 0) return;
-            const firstPath = paths[0];
+            const payload = event.payload as unknown as { paths?: string[] };
+            const paths = payload?.paths ?? (event.payload as unknown as string[]);
+            const pathList = Array.isArray(paths) ? paths : [];
+            const firstPath = pathList[0] ?? "";
             const hasExt = firstPath.lastIndexOf(".") > firstPath.lastIndexOf("/");
+            if (!pathList.length) return;
             if (!hasExt) {
               await openFolder(firstPath);
             } else if (isImageFile(firstPath)) {

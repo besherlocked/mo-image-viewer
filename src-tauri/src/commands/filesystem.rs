@@ -4,7 +4,7 @@ use image::ImageReader;
 use natord::compare as natural_compare;
 use std::fs;
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -228,39 +228,186 @@ pub fn get_image_base64(path: String) -> Result<String, String> {
 }
 
 const PNG_SIGNATURE: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+const JPEG_SIGNATURE: &[u8] = &[0xFF, 0xD8, 0xFF];
+
+/// SQLite 3 magic header; .clip may have a binary header before this.
+const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
 
 fn extract_png_from_blob(data: &[u8]) -> Option<&[u8]> {
-    // Find PNG signature — CLIP Studio Paint sometimes prefixes blobs with headers
     data.windows(8)
         .position(|w| w == PNG_SIGNATURE)
         .map(|pos| &data[pos..])
 }
 
-fn load_clip_preview(path: &Path) -> Result<String, String> {
-    let conn = rusqlite::Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|e| format!("Cannot open .clip file: {}", e))?;
+fn extract_jpeg_from_blob(data: &[u8]) -> Option<&[u8]> {
+    if data.len() >= 3 && data[0..3] == *JPEG_SIGNATURE {
+        Some(data)
+    } else {
+        data.windows(3)
+            .position(|w| w == JPEG_SIGNATURE)
+            .map(|pos| &data[pos..])
+    }
+}
 
-    let queries = [
+/// Collects all byte offsets in `data` where SQLITE_MAGIC appears.
+fn find_sqlite_offsets(data: &[u8]) -> Vec<usize> {
+    let mut offsets = Vec::new();
+    let mut start = 0;
+    while start + 16 <= data.len() {
+        if let Some(pos) = data[start..].windows(16).position(|w| w == SQLITE_MAGIC) {
+            let off = start + pos;
+            offsets.push(off);
+            start = off + 1;
+        } else {
+            break;
+        }
+    }
+    offsets
+}
+
+/// Opens .clip as SQLite at a given byte offset. Returns (Connection, optional temp file to remove).
+fn open_clip_db_at(data: &[u8], offset: usize, temp_path: &Path) -> Result<rusqlite::Connection, String> {
+    fs::write(temp_path, &data[offset..]).map_err(|e| format!("Cannot write temp db: {}", e))?;
+    rusqlite::Connection::open_with_flags(temp_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("Cannot open .clip database: {}", e))
+}
+
+fn load_clip_preview(path: &Path) -> Result<String, String> {
+    // Try opening the file directly (whole file is SQLite)
+    if let Ok(conn) =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+    {
+        if let Ok(result) = run_clip_preview_queries(&conn) {
+            return Ok(result);
+        }
+    }
+
+    let data = fs::read(path).map_err(|e| format!("Cannot read .clip file: {}", e))?;
+    let offsets = find_sqlite_offsets(&data);
+    if offsets.is_empty() {
+        return Err("SQLite database not found in .clip file".to_string());
+    }
+
+    let temp_dir = std::env::temp_dir();
+    let mut last_err = "No image preview found in .clip file".to_string();
+
+    for (i, &offset) in offsets.iter().enumerate() {
+        let temp_path = temp_dir.join(format!(
+            "mo_clip_{}_{}_{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            i
+        ));
+        match open_clip_db_at(&data, offset, &temp_path) {
+            Ok(conn) => {
+                let result = run_clip_preview_queries(&conn);
+                drop(conn);
+                let _ = fs::remove_file(&temp_path);
+                if let Ok(img) = result {
+                    return Ok(img);
+                }
+            }
+            Err(e) => {
+                last_err = e;
+            }
+        }
+    }
+
+    Err(last_err)
+}
+
+fn run_clip_preview_queries(conn: &rusqlite::Connection) -> Result<String, String> {
+    // Fixed queries for known CLIP Studio Paint table/column names (try first)
+    let fixed_queries = [
         "SELECT ImageData FROM CanvasPreview ORDER BY rowid DESC LIMIT 1",
         "SELECT ImageData FROM Thumbnail ORDER BY rowid DESC LIMIT 1",
         "SELECT Data FROM CanvasPreview ORDER BY rowid DESC LIMIT 1",
         "SELECT Data FROM Thumbnail ORDER BY rowid DESC LIMIT 1",
         "SELECT Preview FROM CanvasPreview ORDER BY rowid DESC LIMIT 1",
+        "SELECT Preview FROM Thumbnail ORDER BY rowid DESC LIMIT 1",
     ];
-
-    for query in &queries {
+    for query in &fixed_queries {
         if let Ok(data) = conn.query_row(query, [], |row| row.get::<_, Vec<u8>>(0)) {
             if let Some(png_data) = extract_png_from_blob(&data) {
                 let b64 = base64::engine::general_purpose::STANDARD.encode(png_data);
                 return Ok(format!("data:image/png;base64,{}", b64));
             }
+            if let Some(jpeg_data) = extract_jpeg_from_blob(&data) {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(jpeg_data);
+                return Ok(format!("data:image/jpeg;base64,{}", b64));
+            }
         }
     }
 
-    Err("No PNG preview found in .clip file".to_string())
+    // Discovery: list all tables and try every BLOB column
+    let tables: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        .and_then(|mut stmt| {
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            rows.collect::<Result<Vec<_>, _>>()
+        })
+        .unwrap_or_default();
+
+    for table in tables {
+        #[derive(Debug)]
+        struct ColInfo {
+            name: String,
+            typ: String,
+        }
+        let columns: Vec<ColInfo> = conn
+            .prepare(&format!("PRAGMA table_info(\"{}\")", table.replace('"', "\"\"")))
+            .and_then(|mut stmt| {
+                let rows = stmt.query_map([], |row| {
+                    Ok(ColInfo {
+                        name: row.get::<_, String>(1)?,
+                        typ: row.get::<_, String>(2).unwrap_or_default(),
+                    })
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()
+            })
+            .unwrap_or_default();
+
+        let blob_cols: Vec<String> = columns
+            .iter()
+            .filter(|c| c.typ.eq_ignore_ascii_case("blob"))
+            .map(|c| c.name.clone())
+            .collect();
+
+        let table_quoted = format!("\"{}\"", table.replace('"', "\"\""));
+        for col in &blob_cols {
+            let col_quoted = format!("\"{}\"", col.replace('"', "\"\""));
+            let query = format!(
+                "SELECT {} FROM {} WHERE {} IS NOT NULL LIMIT 20",
+                col_quoted, table_quoted, col_quoted
+            );
+            let mut stmt = match conn.prepare(&query) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let rows = match stmt.query_map([], |row| row.get::<_, Vec<u8>>(0)) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            for row in rows.flatten() {
+                if row.len() < 12 {
+                    continue;
+                }
+                if let Some(png_data) = extract_png_from_blob(&row) {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(png_data);
+                    return Ok(format!("data:image/png;base64,{}", b64));
+                }
+                if let Some(jpeg_data) = extract_jpeg_from_blob(&row) {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(jpeg_data);
+                    return Ok(format!("data:image/jpeg;base64,{}", b64));
+                }
+            }
+        }
+    }
+
+    Err("No image preview found in .clip file".to_string())
 }
 
 fn render_pdf_preview(pdf_path: &Path) -> Result<String, String> {
