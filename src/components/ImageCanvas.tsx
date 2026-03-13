@@ -98,22 +98,21 @@ export function ImageCanvas() {
   const hasImage = currentImageData && images.length > 0;
   const fit = computeFitSize();
 
+  // Multiply width/height directly by zoom — no CSS scale() to avoid WebKit rendering bugs.
+  // Flex centering handles initial placement; translate handles pan only.
   const imgStyle: React.CSSProperties = fit
     ? {
-        position: "absolute" as const,
-        left: "50%",
-        top: "50%",
         width: fit.w * zoom,
         height: fit.h * zoom,
+        flexShrink: 0,
         transform: [
-          "translate(-50%, -50%)",
           `translate(${panX}px, ${panY}px)`,
           rotation ? `rotate(${rotation}deg)` : "",
           flipH ? "scaleX(-1)" : "",
           flipV ? "scaleY(-1)" : "",
         ]
           .filter(Boolean)
-          .join(" "),
+          .join(" ") || "none",
         transformOrigin: "center center",
         cursor: isDragging ? "grabbing" : zoom > 1 ? "grab" : "default",
         userSelect: "none" as const,
@@ -123,33 +122,31 @@ export function ImageCanvas() {
   return (
     <div
       ref={containerRef}
-      className="flex-1 relative overflow-hidden"
+      className="flex-1 flex items-center justify-center overflow-hidden relative"
       style={bgStyle}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
       {!hasImage && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-center text-gray-400 select-none">
-            <svg
-              className="w-24 h-24 mx-auto mb-4 opacity-30"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
-            </svg>
-            <p className="text-lg">拖放图片或文件夹到此处打开</p>
-            <p className="text-sm mt-2 opacity-60">
-              支持 JPG, PNG, GIF, BMP, WebP, TIFF, SVG, AVIF, PSD, CLIP, PDF 等格式
-            </p>
-          </div>
+        <div className="text-center text-gray-400 select-none">
+          <svg
+            className="w-24 h-24 mx-auto mb-4 opacity-30"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+            />
+          </svg>
+          <p className="text-lg">拖放图片或文件夹到此处打开</p>
+          <p className="text-sm mt-2 opacity-60">
+            支持 JPG, PNG, GIF, BMP, WebP, TIFF, SVG, AVIF, PSD, CLIP, PDF 等格式
+          </p>
         </div>
       )}
 

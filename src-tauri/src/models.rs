@@ -75,8 +75,10 @@ pub const IMAGE_EXTENSIONS: &[&str] = &[
 ];
 
 pub fn is_image_file(path: &std::path::Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
-        .unwrap_or(false)
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        let ext_lower = ext.to_lowercase();
+        IMAGE_EXTENSIONS.contains(&ext_lower.as_str())
+    } else {
+        false
+    }
 }

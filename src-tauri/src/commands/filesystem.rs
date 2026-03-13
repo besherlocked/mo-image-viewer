@@ -129,6 +129,15 @@ pub fn get_image_base64(path: String) -> Result<String, String> {
     Ok(format!("data:image/png;base64,{}", b64))
 }
 
+const PNG_SIGNATURE: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+fn extract_png_from_blob(data: &[u8]) -> Option<&[u8]> {
+    // Find PNG signature — CLIP Studio Paint sometimes prefixes blobs with headers
+    data.windows(8)
+        .position(|w| w == PNG_SIGNATURE)
+        .map(|pos| &data[pos..])
+}
+
 fn load_clip_preview(path: &Path) -> Result<String, String> {
     let conn = rusqlite::Connection::open_with_flags(
         path,
@@ -137,22 +146,23 @@ fn load_clip_preview(path: &Path) -> Result<String, String> {
     .map_err(|e| format!("Cannot open .clip file: {}", e))?;
 
     let queries = [
-        "SELECT ImageData FROM CanvasPreview LIMIT 1",
-        "SELECT ImageData FROM Thumbnail LIMIT 1",
-        "SELECT Data FROM CanvasPreview LIMIT 1",
-        "SELECT Data FROM Thumbnail LIMIT 1",
+        "SELECT ImageData FROM CanvasPreview ORDER BY rowid DESC LIMIT 1",
+        "SELECT ImageData FROM Thumbnail ORDER BY rowid DESC LIMIT 1",
+        "SELECT Data FROM CanvasPreview ORDER BY rowid DESC LIMIT 1",
+        "SELECT Data FROM Thumbnail ORDER BY rowid DESC LIMIT 1",
+        "SELECT Preview FROM CanvasPreview ORDER BY rowid DESC LIMIT 1",
     ];
 
     for query in &queries {
         if let Ok(data) = conn.query_row(query, [], |row| row.get::<_, Vec<u8>>(0)) {
-            if !data.is_empty() {
-                let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+            if let Some(png_data) = extract_png_from_blob(&data) {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(png_data);
                 return Ok(format!("data:image/png;base64,{}", b64));
             }
         }
     }
 
-    Err("No preview image found in .clip file".to_string())
+    Err("No PNG preview found in .clip file".to_string())
 }
 
 fn render_pdf_preview(pdf_path: &Path) -> Result<String, String> {
@@ -161,36 +171,67 @@ fn render_pdf_preview(pdf_path: &Path) -> Result<String, String> {
 
 #[cfg(target_os = "macos")]
 fn render_pdf_via_system(pdf_path: &Path) -> Result<String, String> {
-    let temp_dir = std::env::temp_dir().join("mo_image_viewer");
-    let _ = fs::create_dir_all(&temp_dir);
+    let pid = std::process::id();
+    let temp_dir = std::env::temp_dir().join(format!("mo_pdf_{}", pid));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir)
+        .map_err(|e| format!("Cannot create temp dir: {}", e))?;
 
-    let output = std::process::Command::new("qlmanage")
-        .args(["-t", "-s", "4096", "-o"])
+    let _output = std::process::Command::new("qlmanage")
+        .args(["-t", "-s", "2048", "-o"])
         .arg(&temp_dir)
         .arg(pdf_path)
+        // suppress qlmanage's noisy stderr output
+        .stderr(std::process::Stdio::null())
         .output()
         .map_err(|e| format!("Cannot run qlmanage: {}", e))?;
 
-    if !output.status.success() {
-        return Err("qlmanage failed to generate PDF preview".to_string());
+    // qlmanage output filename is unpredictable — scan for any PNG in temp dir
+    let png_entry = fs::read_dir(&temp_dir)
+        .map_err(|e| format!("Cannot read temp dir: {}", e))?
+        .filter_map(|e| e.ok())
+        .find(|e| {
+            e.path()
+                .extension()
+                .and_then(|x| x.to_str())
+                .map(|x| x.to_lowercase() == "png")
+                .unwrap_or(false)
+        });
+
+    let result = if let Some(entry) = png_entry {
+        let data = fs::read(entry.path())
+            .map_err(|e| format!("Cannot read PDF preview: {}", e))?;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+        Ok(format!("data:image/png;base64,{}", b64))
+    } else {
+        // Fallback: try sips (simpler macOS image tool)
+        render_pdf_via_sips(pdf_path, &temp_dir)
+    };
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    result
+}
+
+#[cfg(target_os = "macos")]
+fn render_pdf_via_sips(pdf_path: &Path, temp_dir: &Path) -> Result<String, String> {
+    let out_path = temp_dir.join("preview.png");
+    let status = std::process::Command::new("sips")
+        .args(["-s", "format", "png"])
+        .arg(pdf_path)
+        .arg("--out")
+        .arg(&out_path)
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_err(|e| format!("Cannot run sips: {}", e))?;
+
+    if status.success() && out_path.exists() {
+        let data = fs::read(&out_path)
+            .map_err(|e| format!("Cannot read sips output: {}", e))?;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+        Ok(format!("data:image/png;base64,{}", b64))
+    } else {
+        Err("PDF preview generation failed (tried qlmanage and sips)".to_string())
     }
-
-    let fname = pdf_path
-        .file_name()
-        .ok_or("Invalid filename")?
-        .to_string_lossy();
-    let preview_path = temp_dir.join(format!("{}.png", fname));
-
-    if !preview_path.exists() {
-        return Err("PDF preview file not generated".to_string());
-    }
-
-    let data =
-        fs::read(&preview_path).map_err(|e| format!("Cannot read PDF preview: {}", e))?;
-    let _ = fs::remove_file(&preview_path);
-
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
-    Ok(format!("data:image/png;base64,{}", b64))
 }
 
 #[cfg(target_os = "windows")]
