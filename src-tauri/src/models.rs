@@ -71,7 +71,7 @@ impl Default for AppSettings {
 
 pub const IMAGE_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "svg", "avif", "ico", "heic",
-    "heif", "psd", "pdf",
+    "heif", "psd", "pdf", "clip",
 ];
 
 pub fn is_image_file(path: &std::path::Path) -> bool {

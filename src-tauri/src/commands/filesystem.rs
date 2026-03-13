@@ -106,6 +106,10 @@ pub fn get_image_base64(path: String) -> Result<String, String> {
         return Ok(format!("data:{};base64,{}", mime, b64));
     }
 
+    if ext == "clip" {
+        return load_clip_preview(file_path);
+    }
+
     // For PSD, TIFF, and other formats: decode via image crate, re-encode as PNG
     let img = ImageReader::open(file_path)
         .map_err(|e| format!("Cannot open {}: {}", path, e))?
@@ -120,6 +124,30 @@ pub fn get_image_base64(path: String) -> Result<String, String> {
 
     let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
     Ok(format!("data:image/png;base64,{}", b64))
+}
+
+fn load_clip_preview(path: &Path) -> Result<String, String> {
+    let conn = rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(|e| format!("Cannot open .clip file: {}", e))?;
+
+    let queries = [
+        "SELECT ImageData FROM CanvasPreview LIMIT 1",
+        "SELECT ImageData FROM Thumbnail LIMIT 1",
+    ];
+
+    for query in &queries {
+        if let Ok(data) = conn.query_row(query, [], |row| row.get::<_, Vec<u8>>(0)) {
+            if !data.is_empty() {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+                return Ok(format!("data:image/png;base64,{}", b64));
+            }
+        }
+    }
+
+    Err("No preview image found in .clip file".to_string())
 }
 
 fn mime_from_extension(path: &Path) -> &'static str {
@@ -141,6 +169,7 @@ fn mime_from_extension(path: &Path) -> &'static str {
         Some("heic" | "heif") => "image/heic",
         Some("psd") => "image/vnd.adobe.photoshop",
         Some("pdf") => "application/pdf",
+        Some("clip") => "application/octet-stream",
         _ => "application/octet-stream",
     }
 }

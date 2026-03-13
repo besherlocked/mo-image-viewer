@@ -1,7 +1,9 @@
 mod commands;
 mod models;
 
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
+#[cfg(debug_assertions)]
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -45,12 +47,13 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
-            if let tauri::RunEvent::Opened { urls } = event {
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &_event {
                 for url in urls {
                     if let Ok(path) = url.to_file_path() {
                         if let Some(path_str) = path.to_str() {
-                            let _ = app.emit("open-file", path_str.to_string());
+                            let _ = _app.emit("open-file", path_str.to_string());
                         }
                     }
                 }

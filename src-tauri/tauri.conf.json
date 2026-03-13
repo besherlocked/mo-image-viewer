@@ -98,6 +98,11 @@
         "ext": ["pdf"],
         "mimeType": "application/pdf",
         "description": "PDF Document"
+      },
+      {
+        "ext": ["clip"],
+        "mimeType": "application/octet-stream",
+        "description": "CLIP Studio Paint File"
       }
     ]
   }

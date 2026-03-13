@@ -144,7 +144,7 @@ export function ImageCanvas() {
           </svg>
           <p className="text-lg">拖放图片或文件夹到此处打开</p>
           <p className="text-sm mt-2 opacity-60">
-            支持 JPG, PNG, GIF, BMP, WebP, TIFF, SVG, AVIF, PSD 等格式
+            支持 JPG, PNG, GIF, BMP, WebP, TIFF, SVG, AVIF, PSD, CLIP 等格式
           </p>
         </div>
       )}

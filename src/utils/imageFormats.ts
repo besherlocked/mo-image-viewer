@@ -14,6 +14,7 @@ export const IMAGE_EXTENSIONS = new Set([
   "heif",
   "psd",
   "pdf",
+  "clip",
 ]);
 
 export function isImageFile(filename: string): boolean {
