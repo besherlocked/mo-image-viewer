@@ -1,0 +1,87 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/tauri-config-schema/main/v2.json",
+  "productName": "Mo图",
+  "version": "1.0.0",
+  "identifier": "com.moimage.viewer",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Mo图",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 400,
+        "minHeight": 300,
+        "resizable": true,
+        "fullscreen": false,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["jpg", "jpeg"],
+        "mimeType": "image/jpeg",
+        "description": "JPEG Image"
+      },
+      {
+        "ext": ["png"],
+        "mimeType": "image/png",
+        "description": "PNG Image"
+      },
+      {
+        "ext": ["gif"],
+        "mimeType": "image/gif",
+        "description": "GIF Image"
+      },
+      {
+        "ext": ["bmp"],
+        "mimeType": "image/bmp",
+        "description": "BMP Image"
+      },
+      {
+        "ext": ["webp"],
+        "mimeType": "image/webp",
+        "description": "WebP Image"
+      },
+      {
+        "ext": ["tiff", "tif"],
+        "mimeType": "image/tiff",
+        "description": "TIFF Image"
+      },
+      {
+        "ext": ["svg"],
+        "mimeType": "image/svg+xml",
+        "description": "SVG Image"
+      },
+      {
+        "ext": ["avif"],
+        "mimeType": "image/avif",
+        "description": "AVIF Image"
+      },
+      {
+        "ext": ["ico"],
+        "mimeType": "image/x-icon",
+        "description": "ICO Image"
+      }
+    ]
+  }
+}
