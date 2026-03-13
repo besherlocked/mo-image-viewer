@@ -3,7 +3,7 @@ import { useAppStore } from "../store/appStore";
 import { ThumbnailGrid } from "./ThumbnailGrid";
 
 export function FolderSidebar() {
-  const { siblingFolders, currentFolder } = useAppStore();
+  const { siblingFolders, multiLevelFolders, currentFolder } = useAppStore();
   const [visible, setVisible] = useState(false);
   const [hoveredFolder, setHoveredFolder] = useState<string | null>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -69,7 +69,10 @@ export function FolderSidebar() {
     return () => clearAllTimeouts();
   }, [clearAllTimeouts]);
 
-  if (siblingFolders.length === 0) return null;
+  const hasData =
+    (multiLevelFolders && multiLevelFolders.length > 0) ||
+    siblingFolders.length > 0;
+  if (!hasData) return null;
 
   return (
     <>
@@ -93,35 +96,72 @@ export function FolderSidebar() {
         onMouseLeave={scheduleHide}
       >
         <div className="p-3 border-b border-white/10">
-          <h3 className="text-sm font-medium text-white/70">文件夹</h3>
+          <h3 className="text-sm font-medium text-white/70">文件夹（跨目录）</h3>
         </div>
-        <div className="overflow-y-auto h-[calc(100%-44px)]">
-          {siblingFolders.map((folder) => {
-            const isCurrent = folder.path === currentFolder;
-            return (
-              <div
-                key={folder.path}
-                className={`
-                  px-3 py-2 cursor-pointer text-sm border-l-2 transition-colors
-                  ${
-                    isCurrent
-                      ? "border-cyan-400 bg-cyan-400/10 text-white"
-                      : "border-transparent text-white/70 hover:bg-white/5 hover:text-white"
-                  }
-                `}
-                onClick={() => handleFolderClick(folder.path)}
-                onMouseEnter={() => handleFolderHover(folder.path)}
-                onMouseLeave={scheduleFolderHide}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="truncate">{folder.name}</span>
-                  <span className="text-xs opacity-50 ml-2 shrink-0">
-                    {folder.image_count}
-                  </span>
+        <div className="overflow-y-auto h-[calc(100%-44px)] space-y-2">
+          {multiLevelFolders && multiLevelFolders.length > 0
+            ? multiLevelFolders.map((level) => (
+                <div
+                  key={level.parent_path}
+                  className="px-2 pb-2 border-b border-white/5 last:border-b-0"
+                >
+                  <div className="text-xs text-white/60 mb-1 truncate">
+                    {level.parent_name}
+                  </div>
+                  {level.folders.map((folder) => {
+                    const isCurrent = folder.path === currentFolder;
+                    return (
+                      <div
+                        key={folder.path}
+                        className={`
+                          px-3 py-1.5 cursor-pointer text-xs border-l-2 transition-colors rounded
+                          ${
+                            isCurrent
+                              ? "border-cyan-400 bg-cyan-400/10 text-white"
+                              : "border-transparent text-white/70 hover:bg-white/5 hover:text-white"
+                          }
+                        `}
+                        onClick={() => handleFolderClick(folder.path)}
+                        onMouseEnter={() => handleFolderHover(folder.path)}
+                        onMouseLeave={scheduleFolderHide}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="truncate">{folder.name}</span>
+                          <span className="text-[10px] opacity-50 ml-2 shrink-0">
+                            {folder.image_count}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-            );
-          })}
+              ))
+            : siblingFolders.map((folder) => {
+                const isCurrent = folder.path === currentFolder;
+                return (
+                  <div
+                    key={folder.path}
+                    className={`
+                      px-3 py-2 cursor-pointer text-sm border-l-2 transition-colors
+                      ${
+                        isCurrent
+                          ? "border-cyan-400 bg-cyan-400/10 text-white"
+                          : "border-transparent text-white/70 hover:bg-white/5 hover:text-white"
+                      }
+                    `}
+                    onClick={() => handleFolderClick(folder.path)}
+                    onMouseEnter={() => handleFolderHover(folder.path)}
+                    onMouseLeave={scheduleFolderHide}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="truncate">{folder.name}</span>
+                      <span className="text-xs opacity-50 ml-2 shrink-0">
+                        {folder.image_count}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
         </div>
       </div>
 

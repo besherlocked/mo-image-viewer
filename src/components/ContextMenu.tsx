@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
-import type { FitMode, BackgroundMode } from "../types";
+import type { FitMode, BackgroundMode, AppSettings } from "../types";
 
 interface SubMenuProps {
   label: string;
@@ -171,6 +171,42 @@ export function ContextMenu() {
             checked={background === bg.mode}
             onClick={() => {
               setBackground(bg.mode);
+              close();
+            }}
+          />
+        ))}
+      </SubMenu>
+
+      <Divider />
+
+      <SubMenu label="左侧边栏范围">
+        {[1, 2, 3].map((n) => (
+          <MenuItem
+            key={n}
+            label={`父目录前后 ${n} 层`}
+            checked={settings.sidebar_parent_range === n}
+            onClick={() => {
+              const newSettings: AppSettings = {
+                ...settings,
+                sidebar_parent_range: n,
+              };
+              saveSettings(newSettings);
+              close();
+            }}
+          />
+        ))}
+        <Divider />
+        {[5, 10, 20].map((n) => (
+          <MenuItem
+            key={n}
+            label={`每层最多 ${n} 个文件夹`}
+            checked={settings.sidebar_max_children === n}
+            onClick={() => {
+              const newSettings: AppSettings = {
+                ...settings,
+                sidebar_max_children: n,
+              };
+              saveSettings(newSettings);
               close();
             }}
           />

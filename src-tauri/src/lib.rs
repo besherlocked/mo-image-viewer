@@ -12,6 +12,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::filesystem::list_images,
             commands::filesystem::list_sibling_folders,
+            commands::filesystem::list_multi_level_folders,
             commands::filesystem::get_image_base64,
             commands::filesystem::get_parent_folder,
             commands::image::rotate_image,

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useAppStore } from "../store/appStore";
 import type { ThumbnailData } from "../types";
 
@@ -29,8 +30,24 @@ export function ThumbnailGrid({ folder }: Props) {
     };
   }, [folder]);
 
-  const handleClick = (path: string) => {
-    useAppStore.getState().openFile(path);
+  const handleClick = (e: React.MouseEvent, path: string) => {
+    e.preventDefault();
+    if (e.ctrlKey) {
+      const id = `viewer-${Date.now()}`;
+      const win = new WebviewWindow(id, {
+        url: "index.html",
+      });
+
+      win.once("tauri://created", () => {
+        win.emit("open-file", path);
+      });
+
+      win.once("tauri://error", (event) => {
+        console.error("Failed to create viewer window:", event);
+      });
+    } else {
+      useAppStore.getState().openFile(path);
+    }
   };
 
   if (loading) {
@@ -56,7 +73,7 @@ export function ThumbnailGrid({ folder }: Props) {
           <div
             key={thumb.path}
             className="group cursor-pointer"
-            onClick={() => handleClick(thumb.path)}
+            onClick={(e) => handleClick(e, thumb.path)}
           >
             <div className="aspect-square rounded overflow-hidden bg-black/30 border border-transparent group-hover:border-cyan-400/50 transition-colors">
               <img

@@ -6,6 +6,7 @@ import type {
   AppSettings,
   FitMode,
   BackgroundMode,
+  FolderLevel,
 } from "../types";
 import { DEFAULT_SETTINGS } from "../types";
 
@@ -28,6 +29,7 @@ interface AppState {
 
   settings: AppSettings;
   siblingFolders: FolderInfo[];
+  multiLevelFolders: FolderLevel[];
 
   preloadCache: Record<number, string>;
 
@@ -68,6 +70,7 @@ interface AppState {
     pos?: { x: number; y: number }
   ) => void;
   setShowSettings: (show: boolean) => void;
+  loadMultiLevelFolders: (folder: string) => Promise<void>;
 }
 
 const BACKGROUNDS: BackgroundMode[] = ["dark", "light", "gray", "checkerboard"];
@@ -91,6 +94,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   settings: DEFAULT_SETTINGS,
   siblingFolders: [],
+  multiLevelFolders: [],
 
   preloadCache: {},
 
@@ -128,6 +132,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  loadMultiLevelFolders: async (folder: string) => {
+    try {
+      const { settings } = get();
+      const levels = await invoke<FolderLevel[]>("list_multi_level_folders", {
+        currentFolder: folder,
+        parentRange: settings.sidebar_parent_range,
+        maxChildren: settings.sidebar_max_children,
+      });
+      set({ multiLevelFolders: levels });
+    } catch (e) {
+      console.error("Failed to load multi-level folders:", e);
+    }
+  },
+
   openFolder: async (folder: string, startIndex = 0) => {
     set({ loading: true });
     try {
@@ -144,6 +162,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           currentIndex: 0,
           currentImageData: "",
           siblingFolders,
+          multiLevelFolders: [],
           loading: false,
         });
         return;
@@ -175,6 +194,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }).catch(() => {});
 
       get().preloadAround(idx);
+      get().loadMultiLevelFolders(folder);
     } catch (e) {
       console.error("Failed to open folder:", e);
       set({ loading: false });

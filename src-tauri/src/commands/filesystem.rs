@@ -6,6 +6,15 @@ use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderLevel {
+    pub parent_path: String,
+    pub parent_name: String,
+    pub folders: Vec<FolderInfo>,
+}
+
 #[tauri::command]
 pub fn list_images(folder: String) -> Result<Vec<ImageInfo>, String> {
     let path = Path::new(&folder);
@@ -64,6 +73,95 @@ pub fn list_sibling_folders(folder: String) -> Result<Vec<FolderInfo>, String> {
 
     folders.sort_by(|a, b| natural_compare(&a.name, &b.name));
     Ok(folders)
+}
+
+#[tauri::command]
+pub fn list_multi_level_folders(
+    current_folder: String,
+    parent_range: i32,
+    max_children: usize,
+) -> Result<Vec<FolderLevel>, String> {
+    let current_path = Path::new(&current_folder);
+    let parent = current_path
+        .parent()
+        .ok_or_else(|| "No parent directory for current folder".to_string())?;
+
+    // grandparent 用来枚举“父目录的兄弟们”（如 2023、2024、2025）
+    let grandparent = parent.parent().unwrap_or(parent);
+
+    let mut parent_candidates: Vec<_> = fs::read_dir(grandparent)
+        .map_err(|e| e.to_string())?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.is_dir() {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    parent_candidates.sort_by(|a, b| {
+        let an = a.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let bn = b.file_name().unwrap_or_default().to_string_lossy().to_string();
+        natural_compare(&an, &bn)
+    });
+
+    let parent_str = parent.to_string_lossy().to_string();
+    let center_idx = parent_candidates
+        .iter()
+        .position(|p| p.to_string_lossy() == parent_str)
+        .ok_or_else(|| "Parent directory not found among its siblings".to_string())?;
+
+    let range = parent_range.max(0) as usize;
+    let mut levels: Vec<FolderLevel> = Vec::new();
+
+    let start = center_idx.saturating_sub(range);
+    let end = (center_idx + range + 1).min(parent_candidates.len());
+
+    for p in &parent_candidates[start..end] {
+        let mut children: Vec<FolderInfo> = fs::read_dir(p)
+            .map_err(|e| e.to_string())?
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let dir_path = entry.path();
+                if dir_path.is_dir() {
+                    let image_count = count_images_in_dir(&dir_path);
+                    if image_count > 0 {
+                        Some(FolderInfo {
+                            name: dir_path.file_name()?.to_string_lossy().to_string(),
+                            path: dir_path.to_string_lossy().to_string(),
+                            image_count,
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        children.sort_by(|a, b| natural_compare(&a.name, &b.name));
+        if max_children > 0 && children.len() > max_children {
+            children.truncate(max_children);
+        }
+
+        if !children.is_empty() {
+            levels.push(FolderLevel {
+                parent_path: p.to_string_lossy().to_string(),
+                parent_name: p
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                folders: children,
+            });
+        }
+    }
+
+    Ok(levels)
 }
 
 fn count_images_in_dir(dir: &Path) -> usize {

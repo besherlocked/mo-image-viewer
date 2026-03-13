@@ -33,6 +33,8 @@ export interface AppSettings {
   key_bindings: KeyBindings;
   background: BackgroundMode;
   fit_mode: FitMode;
+  sidebar_parent_range: number;
+  sidebar_max_children: number;
 }
 
 export type FitMode = "contain" | "width" | "height" | "original";
@@ -55,4 +57,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   key_bindings: DEFAULT_KEY_BINDINGS,
   background: "dark",
   fit_mode: "contain",
+  sidebar_parent_range: 1,
+  sidebar_max_children: 10,
 };

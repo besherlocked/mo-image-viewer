@@ -56,6 +56,8 @@ pub struct AppSettings {
     pub key_bindings: KeyBindings,
     pub background: String,
     pub fit_mode: String,
+    pub sidebar_parent_range: i32,
+    pub sidebar_max_children: i32,
 }
 
 impl Default for AppSettings {
@@ -65,6 +67,8 @@ impl Default for AppSettings {
             key_bindings: KeyBindings::default(),
             background: "dark".to_string(),
             fit_mode: "contain".to_string(),
+            sidebar_parent_range: 1,
+            sidebar_max_children: 10,
         }
     }
 }
