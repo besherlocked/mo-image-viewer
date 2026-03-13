@@ -5,7 +5,6 @@ import { useImageNavigation } from "./hooks/useImageNavigation";
 import { usePreloader } from "./hooks/usePreloader";
 import { useSettings } from "./hooks/useSettings";
 import { ImageCanvas } from "./components/ImageCanvas";
-import { MiniMap } from "./components/MiniMap";
 import { ContextMenu } from "./components/ContextMenu";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { FolderSidebar } from "./components/FolderSidebar";
@@ -75,7 +74,6 @@ function App() {
       onContextMenu={handleContextMenu}
     >
       <ImageCanvas />
-      <MiniMap />
       <BackgroundToggle />
       <FolderSidebar />
       <ContextMenu />
